@@ -225,6 +225,35 @@ redis in docker
     
     echo -e 'bgsave' | docker exec -i redis redis-cli
 
+备份docker里的redis
+^^^^^^^^^^^^^^^^^^^^^^^
+
+下面脚本实现的是从redis容器中将数据备份到本地磁盘, 然后压缩并同步到专门的备份服务器上并删除本地备份文件(防止塞满硬盘).
+
+.. code-block:: shell
+
+    #!/bin/bash
+    t_start=$(date '+%s')
+    echo -e 'bgsave' | docker exec -i redis redis-cli
+    t_lastsave=$(echo -e 'lastsave' | docker exec -i redis redis-cli)
+    until $([ $t_lastsave -ge $t_start ])
+    do
+        t_lastsave=$(echo -e 'lastsave' | docker exec -i redis redis-cli)
+        sleep 5s
+        echo "bgsave not done, wait for 5s"
+    done
+    echo "redis bgsave done"
+    file_name=$(date +"%Y%m%d_%H%m%S")
+    echo "copy to local dir"
+    docker run --rm --privileged --volumes-from redis_data -v /data/redis-backup:/backup busybox cp /data/dump.rdb /backup/${file_name}.rdb
+    echo "start compression"
+    xz /data/redis-backup/${file_name}.rdb
+    echo "compression done /data/redis-backup/"${file_name}".rdb.xz"
+    echo "start transmission"
+    rsync -c -v --remove-source-files /date/redis-backup/* ac-local:/home/ac-backup/redis
+    echo "all done"
+
+
 redis批量删除key
 ^^^^^^^^^^^^^^^^^^^^^^^
 
